@@ -39,15 +39,24 @@ def get_llm_client(llm_type: str = "fast") -> OpenAI:
     llm_config = config[f"llm_{llm_type}"]
     
     # Проверяем, что API ключ настроен
-    if not llm_config["api_key"] or llm_config["api_key"] == "your-api-key-here":
+    if not llm_config.get("api_key") or llm_config["api_key"] in ["your-api-key-here", ""]:
         raise ValueError(
             f"API ключ для {llm_type} модели не настроен. "
             f"Пожалуйста, укажите valid API ключ в файле config.json"
         )
     
+    # Проверяем, что model настроен
+    if not llm_config.get("model") or llm_config["model"] in ["your-model-here", ""]:
+        raise ValueError(
+            f"Модель для {llm_type} LLM не настроена. "
+            f"Пожалуйста, укажите название модели в файле config.json"
+        )
+    
+    api_base = llm_config.get("api_base", "https://api.openai.com/v1")
+    
     client = OpenAI(
         api_key=llm_config["api_key"],
-        base_url=llm_config["api_base"]
+        base_url=api_base
     )
     return client
 
@@ -84,6 +93,11 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
         # Логируем ошибку и пробрасываем дальше с более понятным сообщением
         error_msg = f"LLM API error ({llm_type}): {str(e)}"
         print(error_msg)
+        # Добавляем дополнительную информацию об ошибке
+        if hasattr(e, 'status_code'):
+            print(f"Status code: {e.status_code}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response}")
         raise Exception(error_msg) from e
 
 

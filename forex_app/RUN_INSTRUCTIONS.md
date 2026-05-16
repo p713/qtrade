@@ -9,9 +9,51 @@ pip install -r requirements.txt
 ```
 
 ### 2. Настройка конфигурации
-Отредактируйте файл `config.json`:
-- Укажите ваши API ключи для LLM (OpenAI или совместимый сервис)
-- При необходимости измените порт для MT5
+
+**Важно:** Перед использованием приложения необходимо настроить API ключи для LLM!
+
+1. Скопируйте файл `config.json.example` в `config.json` (если файл ещё не создан):
+```bash
+cp config.json.example config.json
+```
+
+2. Отредактируйте файл `config.json`:
+   - **Обязательно укажите ваши API ключи** для `llm_fast.api_key` и `llm_slow.api_key`
+   - При необходимости измените `api_base` для использования альтернативных провайдеров (LocalAI, Ollama и т.д.)
+   - Укажите названия моделей в `model`
+   - При необходимости измените порт для MT5
+
+Пример конфигурации для OpenAI:
+```json
+{
+  "llm_fast": {
+    "api_base": "https://api.openai.com/v1",
+    "api_key": "sk-your-actual-api-key-here",
+    "model": "gpt-3.5-turbo"
+  },
+  "llm_slow": {
+    "api_base": "https://api.openai.com/v1",
+    "api_key": "sk-your-actual-api-key-here",
+    "model": "gpt-4"
+  }
+}
+```
+
+Пример конфигурации для локальной модели (Ollama):
+```json
+{
+  "llm_fast": {
+    "api_base": "http://localhost:11434/v1",
+    "api_key": "ollama",
+    "model": "llama3"
+  },
+  "llm_slow": {
+    "api_base": "http://localhost:11434/v1",
+    "api_key": "ollama",
+    "model": "llama3"
+  }
+}
+```
 
 ### 3. Запуск приложения
 ```bash
@@ -88,10 +130,44 @@ curl -X POST http://localhost:8000/api/strategies \
 - Проверьте, что порт в config.json совпадает с настройками советника
 - Проверьте брандмауэр Windows
 
-### Ошибка LLM API
-- Проверьте API ключ в config.json
-- Убедитесь, что у вас есть доступ к интернету
-- Проверьте лимиты вашего аккаунта OpenAI
+### Ошибка LLM API (404 Not Found)
+
+**Причина:** Неверно настроен API ключ, модель или базовый URL в `config.json`.
+
+**Решение:**
+1. Проверьте файл `config.json`:
+   - Убедитесь, что `api_key` указан правильно (не `"your-api-key-here"`)
+   - Проверьте название модели в поле `model`
+   - Убедитесь, что `api_base` соответствует вашему провайдеру
+
+2. Для OpenAI:
+   ```json
+   {
+     "llm_fast": {
+       "api_base": "https://api.openai.com/v1",
+       "api_key": "sk-ваш-реальный-ключ",
+       "model": "gpt-3.5-turbo"
+     }
+   }
+   ```
+
+3. Для локальных моделей (Ollama, LocalAI):
+   ```json
+   {
+     "llm_fast": {
+       "api_base": "http://localhost:11434/v1",
+       "api_key": "ollama",
+       "model": "llama3"
+     }
+   }
+   ```
+
+4. Перезапустите приложение после изменения конфигурации
+
+### Ошибка LLM API (недостаточно прав)
+
+- Проверьте, что ваш API ключ активен и имеет доступ к указанным моделям
+- Проверьте баланс аккаунта (для платных API)
 
 ### Данные не загружаются
 - Убедитесь, что советник MT5 имеет доступ к истории котировок
