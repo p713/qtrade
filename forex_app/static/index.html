@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forex Trading Application</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Левая панель - список стратегий -->
+        <aside class="sidebar">
+            <h2>Стратегии</h2>
+            <button id="btn-new-strategy" class="btn btn-primary">+ Новая стратегия</button>
+            <div id="strategies-list" class="strategies-list"></div>
+        </aside>
+
+        <!-- Центральная область -->
+        <main class="main-content">
+            <!-- Редактор стратегии -->
+            <section id="strategy-editor" class="editor-section">
+                <h2 id="editor-title">Редактор стратегии</h2>
+                
+                <form id="strategy-form">
+                    <input type="hidden" id="strategy-id">
+                    
+                    <div class="form-group">
+                        <label for="strategy-name">Название:</label>
+                        <input type="text" id="strategy-name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="base-timeframe">Основной таймфрейм:</label>
+                        <select id="base-timeframe"></select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Таймфреймы:</label>
+                        <div id="timeframes-container" class="checkbox-group"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Индикаторы:</label>
+                        <div id="indicators-container"></div>
+                        <button type="button" id="btn-add-indicator" class="btn btn-secondary">+ Добавить индикатор</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="prompt-open">Промпт для открытия сделки:</label>
+                        <textarea id="prompt-open" rows="6"></textarea>
+                        <div class="prompt-editor">
+                            <input type="text" id="prompt-open-request" placeholder="Запрос к LLM для улучшения промпта...">
+                            <button type="button" id="btn-improve-open" class="btn btn-ai">Улучшить промпт (AI)</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="prompt-close">Промпт для закрытия сделки:</label>
+                        <textarea id="prompt-close" rows="6"></textarea>
+                        <div class="prompt-editor">
+                            <input type="text" id="prompt-close-request" placeholder="Запрос к LLM для улучшения промпта...">
+                            <button type="button" id="btn-improve-close" class="btn btn-ai">Улучшить промпт (AI)</button>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-success">Сохранить</button>
+                        <button type="button" id="btn-delete-strategy" class="btn btn-danger">Удалить</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Панель тестирования -->
+            <section id="backtest-panel" class="backtest-section">
+                <h2>Тестирование стратегии</h2>
+                
+                <div class="form-group">
+                    <label for="test-symbol">Инструмент:</label>
+                    <select id="test-symbol"></select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="test-start">Дата начала:</label>
+                        <input type="date" id="test-start">
+                    </div>
+                    <div class="form-group">
+                        <label for="test-end">Дата окончания:</label>
+                        <input type="date" id="test-end">
+                    </div>
+                </div>
+
+                <button id="btn-run-backtest" class="btn btn-primary">Запустить тестирование</button>
+
+                <!-- Результаты тестирования -->
+                <div id="backtest-results" class="results-container" style="display:none;">
+                    <h3>Результаты тестирования</h3>
+                    <div id="test-status"></div>
+                    <div id="test-summary"></div>
+                    <div id="test-logs"></div>
+                    <div id="test-trades"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
