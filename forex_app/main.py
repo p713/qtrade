@@ -160,6 +160,10 @@ async def edit_prompt_endpoint(request: EditPromptRequest):
         result = edit_prompt(request.prompt, request.request)
         return {"result": result}
     except Exception as e:
+        # Логируем полную информацию об ошибке
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in edit_prompt_endpoint: {error_details}")
         raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
 
 
