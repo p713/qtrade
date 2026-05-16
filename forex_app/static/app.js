@@ -388,11 +388,19 @@ async function improvePrompt(promptType) {
             promptField.value = data.result;
             requestField.value = '';
         } else {
-            alert('Ошибка: ' + (data.detail || 'Не удалось улучшить промпт'));
+            // Форматируем сообщение об ошибке для отображения
+            let errorMessage = data.detail || 'Не удалось улучшить промпт';
+            
+            // Если ошибка содержит инструкции по проверке настроек, показываем их
+            if (errorMessage.includes('config.json')) {
+                alert('Ошибка подключения к LLM:\n\n' + errorMessage);
+            } else {
+                alert('Ошибка: ' + errorMessage);
+            }
         }
     } catch (error) {
         console.error('Failed to improve prompt:', error);
-        alert('Ошибка при улучшении промпта');
+        alert('Ошибка соединения с сервером: ' + error.message);
     } finally {
         btn.disabled = false;
         btn.textContent = 'Улучшить промпт (AI)';
