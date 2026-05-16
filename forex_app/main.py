@@ -159,8 +159,14 @@ async def edit_prompt_endpoint(request: EditPromptRequest):
     try:
         result = edit_prompt(request.prompt, request.request)
         return {"result": result}
+    except ValueError as e:
+        # Ошибки конфигурации (неверный API ключ, модель и т.д.)
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Configuration error in edit_prompt_endpoint: {error_details}")
+        raise HTTPException(status_code=400, detail=f"Configuration error: {str(e)}")
     except Exception as e:
-        # Логируем полную информацию об ошибке
+        # Другие ошибки
         import traceback
         error_details = traceback.format_exc()
         print(f"Error in edit_prompt_endpoint: {error_details}")
