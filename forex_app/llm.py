@@ -5,13 +5,20 @@
 """
 
 import json
+import os
+from pathlib import Path
 from typing import Optional
 from openai import OpenAI
 
 
+# Получаем директорию текущего файла
+BASE_DIR = Path(__file__).parent
+
+
 def load_config() -> dict:
     """Загружает конфигурацию из config.json"""
-    with open("config.json", "r", encoding="utf-8") as f:
+    config_path = BASE_DIR / "config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -24,9 +31,19 @@ def get_llm_client(llm_type: str = "fast") -> OpenAI:
     
     Returns:
         OpenAI клиент
+    
+    Raises:
+        ValueError: Если API ключ не настроен
     """
     config = load_config()
     llm_config = config[f"llm_{llm_type}"]
+    
+    # Проверяем, что API ключ настроен
+    if not llm_config["api_key"] or llm_config["api_key"] == "your-api-key-here":
+        raise ValueError(
+            f"API ключ для {llm_type} модели не настроен. "
+            f"Пожалуйста, укажите valid API ключ в файле config.json"
+        )
     
     client = OpenAI(
         api_key=llm_config["api_key"],
@@ -50,14 +67,24 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
     llm_config = config[f"llm_{llm_type}"]
     client = get_llm_client(llm_type)
     
-    response = client.chat.completions.create(
-        model=llm_config["model"],
-        messages=messages,
-        temperature=0.7,
-        max_tokens=2000
-    )
+    try:
+        response = client.chat.completions.create(
+            model=llm_config["model"],
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        if not response.choices or len(response.choices) == 0:
+            raise Exception("LLM returned no choices")
+        
+        return response.choices[0].message.content.strip()
     
-    return response.choices[0].message.content.strip()
+    except Exception as e:
+        # Логируем ошибку и пробрасываем дальше с более понятным сообщением
+        error_msg = f"LLM API error ({llm_type}): {str(e)}"
+        print(error_msg)
+        raise Exception(error_msg) from e
 
 
 def edit_prompt(prompt_text: str, user_request: str) -> str:
