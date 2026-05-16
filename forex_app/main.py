@@ -166,11 +166,22 @@ async def edit_prompt_endpoint(request: EditPromptRequest):
         print(f"Configuration error in edit_prompt_endpoint: {error_details}")
         raise HTTPException(status_code=400, detail=f"Configuration error: {str(e)}")
     except Exception as e:
-        # Другие ошибки
+        # Другие ошибки (включая LLM API errors)
         import traceback
         error_details = traceback.format_exc()
         print(f"Error in edit_prompt_endpoint: {error_details}")
-        raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
+        
+        # Извлекаем более понятное сообщение об ошибке
+        error_message = str(e)
+        
+        # Если ошибка содержит информацию о статусе, добавляем её
+        if "404" in error_message:
+            error_message += "\n\nПроверьте настройки LLM в config.json:\n" \
+                           "- api_base: должен указывать на правильный URL сервера\n" \
+                           "- model: название модели должно соответствовать доступным на сервере\n" \
+                           "- Для локальных моделей (Ollama, LM Studio) убедитесь, что сервер запущен"
+        
+        raise HTTPException(status_code=500, detail=f"LLM error: {error_message}")
 
 
 # ============================================================================

@@ -77,6 +77,7 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
     client = get_llm_client(llm_type)
     
     try:
+        # Пробуем стандартный формат OpenAI
         response = client.chat.completions.create(
             model=llm_config["model"],
             messages=messages,
@@ -90,14 +91,31 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
         return response.choices[0].message.content.strip()
     
     except Exception as e:
-        # Логируем ошибку и пробрасываем дальше с более понятным сообщением
+        # Логируем ошибку с детальной информацией
         error_msg = f"LLM API error ({llm_type}): {str(e)}"
         print(error_msg)
-        # Добавляем дополнительную информацию об ошибке
+        
         if hasattr(e, 'status_code'):
             print(f"Status code: {e.status_code}")
         if hasattr(e, 'response'):
             print(f"Response: {e.response}")
+            try:
+                if hasattr(e.response, 'text'):
+                    print(f"Response text: {e.response.text}")
+                elif hasattr(e.response, 'json'):
+                    print(f"Response JSON: {e.response.json()}")
+            except:
+                pass
+        
+        # Добавляем подсказки для распространённых проблем
+        api_base = llm_config.get("api_base", "https://api.openai.com/v1")
+        if "404" in str(e):
+            print(f"\nВозможные причины ошибки 404:")
+            print(f"1. Проверьте, что API сервер запущен по адресу: {api_base}")
+            print(f"2. Убедитесь, что endpoint поддерживает /chat/completions")
+            print(f"3. Для локальных моделей (Ollama, LM Studio) проверьте правильность base_url")
+            print(f"4. Некоторые локальные серверы требуют другой формат URL (например, без /v1 на конце)")
+        
         raise Exception(error_msg) from e
 
 
