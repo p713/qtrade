@@ -1,14 +1,17 @@
 """
-Модуль для работы с LLM-моделями.
+Модуль для работы с LLM-моделями через LiteLLM.
 Быстрая модель - для торговых решений.
 Медленная модель - для редактирования промптов.
+LiteLLM обеспечивает единую точку доступа к различным LLM провайдерам:
+OpenAI, Anthropic, Azure, Ollama, LM Studio и др.
 """
 
 import json
 import os
 from pathlib import Path
 from typing import Optional
-from openai import OpenAI
+import litellm
+from litellm import completion
 
 
 # Получаем директорию текущего файла
@@ -22,28 +25,31 @@ def load_config() -> dict:
         return json.load(f)
 
 
-def get_llm_client(llm_type: str = "fast") -> OpenAI:
+def get_llm_config(llm_type: str = "fast") -> dict:
     """
-    Возвращает клиент для LLM API.
+    Возвращает конфигурацию для LLM.
     
     Args:
         llm_type: "fast" или "slow"
     
     Returns:
-        OpenAI клиент
+        dict с конфигурацией LLM
     
     Raises:
-        ValueError: Если API ключ не настроен
+        ValueError: Если конфигурация не настроена
     """
     config = load_config()
     llm_config = config[f"llm_{llm_type}"]
     
-    # Проверяем, что API ключ настроен
-    if not llm_config.get("api_key") or llm_config["api_key"] in ["your-api-key-here", ""]:
-        raise ValueError(
-            f"API ключ для {llm_type} модели не настроен. "
-            f"Пожалуйста, укажите valid API ключ в файле config.json"
-        )
+    # Проверяем, что API ключ настроен (если требуется)
+    api_key = llm_config.get("api_key", "")
+    if not api_key or api_key in ["your-api-key-here", ""]:
+        # Для некоторых провайдеров (Ollama, локальные) ключ может быть пустым
+        if "api_base" not in llm_config or not llm_config["api_base"]:
+            raise ValueError(
+                f"API ключ для {llm_type} модели не настроен. "
+                f"Пожалуйста, укажите valid API ключ в файле config.json"
+            )
     
     # Проверяем, что model настроен
     if not llm_config.get("model") or llm_config["model"] in ["your-model-here", ""]:
@@ -52,18 +58,12 @@ def get_llm_client(llm_type: str = "fast") -> OpenAI:
             f"Пожалуйста, укажите название модели в файле config.json"
         )
     
-    api_base = llm_config.get("api_base", "https://api.openai.com/v1")
-    
-    client = OpenAI(
-        api_key=llm_config["api_key"],
-        base_url=api_base
-    )
-    return client
+    return llm_config
 
 
 def call_llm(messages: list, llm_type: str = "fast") -> str:
     """
-    Отправляет запрос к LLM модели.
+    Отправляет запрос к LLM модели через LiteLLM.
     
     Args:
         messages: Список сообщений в формате [{"role": "user", "content": "..."}]
@@ -72,18 +72,37 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
     Returns:
         Ответ от модели (строка)
     """
-    config = load_config()
-    llm_config = config[f"llm_{llm_type}"]
-    client = get_llm_client(llm_type)
+    llm_config = get_llm_config(llm_type)
+    
+    # Формируем имя модели для LiteLLM
+    # LiteLLM поддерживает различные форматы:
+    # - openai/gpt-3.5-turbo
+    # - ollama/llama2
+    # - huggingface/model-name
+    # Если указан api_base, используем его как proxy
+    model_name = llm_config["model"]
+    api_base = llm_config.get("api_base", None)
+    api_key = llm_config.get("api_key", None)
     
     try:
-        # Пробуем стандартный формат OpenAI
-        response = client.chat.completions.create(
-            model=llm_config["model"],
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2000
-        )
+        # Подготовка параметров для completion
+        completion_kwargs = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2000
+        }
+        
+        # Если указан api_base, используем его
+        if api_base:
+            completion_kwargs["api_base"] = api_base
+        
+        # Если указан api_key, используем его
+        if api_key and api_key not in ["your-api-key-here", ""]:
+            completion_kwargs["api_key"] = api_key
+        
+        # Вызов LiteLLM completion
+        response = completion(**completion_kwargs)
         
         if not response.choices or len(response.choices) == 0:
             raise Exception("LLM returned no choices")
@@ -95,6 +114,7 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
         error_msg = f"LLM API error ({llm_type}): {str(e)}"
         print(error_msg)
         
+        # Дополнительная информация об ошибке
         if hasattr(e, 'status_code'):
             print(f"Status code: {e.status_code}")
         if hasattr(e, 'response'):
@@ -108,13 +128,24 @@ def call_llm(messages: list, llm_type: str = "fast") -> str:
                 pass
         
         # Добавляем подсказки для распространённых проблем
-        api_base = llm_config.get("api_base", "https://api.openai.com/v1")
-        if "404" in str(e):
+        if "404" in str(e) or "Not Found" in str(e):
             print(f"\nВозможные причины ошибки 404:")
-            print(f"1. Проверьте, что API сервер запущен по адресу: {api_base}")
-            print(f"2. Убедитесь, что endpoint поддерживает /chat/completions")
-            print(f"3. Для локальных моделей (Ollama, LM Studio) проверьте правильность base_url")
-            print(f"4. Некоторые локальные серверы требуют другой формат URL (например, без /v1 на конце)")
+            print(f"1. Проверьте, что API сервер запущен по адресу: {api_base or 'default'}")
+            print(f"2. Убедитесь, что модель '{model_name}' доступна на этом сервере")
+            print(f"3. Для локальных моделей (Ollama, LM Studio):")
+            print(f"   - Ollama: api_base должен быть 'http://localhost:11434'")
+            print(f"   - LM Studio: api_base должен быть 'http://localhost:1234/v1'")
+            print(f"   - Модель должна быть загружена в сервис")
+            print(f"4. Формат имени модели может требовать префикс провайдера:")
+            print(f"   - Для OpenAI: 'openai/gpt-3.5-turbo'")
+            print(f"   - Для Ollama: 'ollama/llama2' или просто 'llama2'")
+            print(f"5. Проверьте, что API ключ корректен (если требуется)")
+        
+        if "connection" in str(e).lower() or "refused" in str(e).lower():
+            print(f"\nОшибка подключения:")
+            print(f"1. Убедитесь, что сервер запущен")
+            print(f"2. Проверьте правильность адреса и порта в api_base")
+            print(f"3. Проверьте брандмауэр и сетевые настройки")
         
         raise Exception(error_msg) from e
 
