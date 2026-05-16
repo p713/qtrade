@@ -1,0 +1,16 @@
+{
+  "symbols": ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "EURJPY", "GBPJPY", "CHFJPY", "GBPCHF", "AUDUSD", "AUDJPY"],
+  "timeframes": [60, 240, 1440],
+  "llm_fast": {
+    "api_base": "https://api.openai.com/v1",
+    "api_key": "your-api-key-here",
+    "model": "gpt-3.5-turbo"
+  },
+  "llm_slow": {
+    "api_base": "https://api.openai.com/v1",
+    "api_key": "your-api-key-here",
+    "model": "gpt-4"
+  },
+  "mt5_socket_port": 9999,
+  "db_path": "forex_data.sqlite"
+}
