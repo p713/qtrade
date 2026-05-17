@@ -14,11 +14,13 @@ class IndicatorParams(BaseModel):
     d_period: Optional[int] = None
     slowing: Optional[int] = None
     std_dev: Optional[float] = None
+    min_body_ratio: Optional[float] = None
+    min_shadow_ratio: Optional[float] = None
 
 
 class IndicatorConfig(BaseModel):
     """Конфигурация индикатора."""
-    type: str = Field(..., description="Тип индикатора (SMA, EMA, STOCHASTIC, RSI, BOLLINGER, ATR)")
+    type: str = Field(..., description="Тип индикатора (SMA, EMA, STOCHASTIC, RSI, BOLLINGER, ATR, ADX, LAST_CANDLE_SIZE_PIPS, IS_PINBAR, ENGULFING)")
     timeframe: int = Field(..., description="Таймфрейм в минутах")
     params: Dict[str, Any] = Field(default_factory=dict, description="Параметры индикатора")
 
@@ -31,6 +33,7 @@ class StrategyCreate(BaseModel):
     prompt_open: str = Field(default="", description="Промпт для открытия сделки")
     prompt_close: str = Field(default="", description="Промпт для закрытия сделки")
     base_timeframe: int = Field(default=60, description="Основной таймфрейм для тестирования")
+    candles_count: int = Field(default=5, ge=1, le=100, description="Количество последних свечей для анализа")
 
 
 class StrategyUpdate(BaseModel):
@@ -41,6 +44,7 @@ class StrategyUpdate(BaseModel):
     prompt_open: Optional[str] = None
     prompt_close: Optional[str] = None
     base_timeframe: Optional[int] = None
+    candles_count: Optional[int] = Field(None, ge=1, le=100)
 
 
 class BacktestRequest(BaseModel):

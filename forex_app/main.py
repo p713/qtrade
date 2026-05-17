@@ -107,7 +107,8 @@ async def create_new_strategy(strategy: StrategyCreate):
         indicators=indicators_dict,
         prompt_open=strategy.prompt_open,
         prompt_close=strategy.prompt_close,
-        base_timeframe=strategy.base_timeframe
+        base_timeframe=strategy.base_timeframe,
+        candles_count=strategy.candles_count
     )
     
     return {"strategy": new_strategy}

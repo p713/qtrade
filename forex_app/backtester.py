@@ -16,6 +16,17 @@ from data_manager import fetch_all_required_data, load_dataframe
 from socket_server import get_mt5_server
 
 
+def format_timeframe(minutes: int) -> str:
+    """Форматирует таймфрейм в читаемый вид (M5, M15, H1, H4, D1)."""
+    if minutes < 60:
+        return f"M{minutes}"
+    elif minutes < 1440:
+        hours = minutes // 60
+        return f"H{hours}"
+    else:
+        return "D1"
+
+
 class BacktestEngine:
     """
     Движок для бэктестинга стратегий.
@@ -63,12 +74,14 @@ class BacktestEngine:
         
         # Базовый таймфрейм для тестирования
         base_timeframe = strategy.get("base_timeframe", 60)
-        self.log(f"Base timeframe: H{base_timeframe//60}")
+        candles_count = strategy.get("candles_count", 5)  # Количество последних свечей для анализа
+        self.log(f"Base timeframe: {format_timeframe(base_timeframe)}")
+        self.log(f"Candles count for analysis: {candles_count}")
         
         # Получаем DataFrame для базового таймфрейма
         base_df = data_dict.get((symbol, base_timeframe))
         if base_df is None:
-            self.log(f"ERROR: No data for base timeframe H{base_timeframe//60}")
+            self.log(f"ERROR: No data for base timeframe {format_timeframe(base_timeframe)}")
             return {"error": "No data for base timeframe", "logs": self.test_logs}
         
         # Рассчитываем индикаторы для всех таймфреймов
@@ -89,7 +102,7 @@ class BacktestEngine:
                     try:
                         result = calculate_indicator(df, ind_type, params)
                         tf_indicators.update(result)
-                        self.log(f"Calculated {ind_type} on H{tf//60}: {list(result.keys())}")
+                        self.log(f"Calculated {ind_type} on {format_timeframe(tf)}: {list(result.keys())}")
                     except Exception as e:
                         self.log(f"ERROR calculating {ind_type}: {e}")
             
@@ -105,6 +118,11 @@ class BacktestEngine:
         if len(base_df) == 0:
             self.log("ERROR: No data after calculating indicators")
             return {"error": "No data after indicators", "logs": self.test_logs}
+        
+        # Берём только последние candles_count свечей для анализа
+        if len(base_df) > candles_count:
+            base_df = base_df.iloc[-candles_count:].copy()
+            self.log(f"Using last {candles_count} candles for analysis")
         
         self.log(f"Ready to test on {len(base_df)} bars")
         

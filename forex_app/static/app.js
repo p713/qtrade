@@ -24,10 +24,10 @@ async function loadConfig() {
         const response = await fetch('/api/config');
         config = await response.json();
         
-        // Заполняем селект таймфреймов
+        // Заполняем селект таймфреймов с правильным форматом (M5, M15, H1, H4, D1)
         const baseTimeframeSelect = document.getElementById('base-timeframe');
         baseTimeframeSelect.innerHTML = config.timeframes.map(tf => 
-            `<option value="${tf}">H${tf/60}</option>`
+            `<option value="${tf}">${formatTimeframe(tf)}</option>`
         ).join('');
         
         // Заполняем селект инструментов
@@ -39,10 +39,24 @@ async function loadConfig() {
         // Заполняем чекбоксы таймфреймов
         const timeframesContainer = document.getElementById('timeframes-container');
         timeframesContainer.innerHTML = config.timeframes.map(tf => 
-            `<label><input type="checkbox" name="timeframe" value="${tf}"> H${tf/60}</label>`
+            `<label><input type="checkbox" name="timeframe" value="${tf}"> ${formatTimeframe(tf)}</label>`
         ).join('');
     } catch (error) {
         console.error('Failed to load config:', error);
+    }
+}
+
+/**
+ * Форматирует таймфрейм в читаемый вид (M5, M15, H1, H4, D1)
+ */
+function formatTimeframe(minutes) {
+    if (minutes < 60) {
+        return `M${minutes}`;
+    } else if (minutes < 1440) {
+        const hours = minutes / 60;
+        return `H${hours}`;
+    } else {
+        return 'D1';
     }
 }
 
@@ -119,6 +133,7 @@ function createNewStrategy() {
     document.getElementById('strategy-form').reset();
     document.getElementById('strategy-id').value = '';
     document.getElementById('indicators-container').innerHTML = '';
+    document.getElementById('candles-count').value = '5';
     
     // Снимаем выделение со списка
     document.querySelectorAll('.strategy-item').forEach(item => item.classList.remove('active'));
@@ -134,6 +149,7 @@ function selectStrategy(strategyId) {
     document.getElementById('strategy-id').value = strategy.id;
     document.getElementById('strategy-name').value = strategy.name;
     document.getElementById('base-timeframe').value = strategy.base_timeframe || 60;
+    document.getElementById('candles-count').value = strategy.candles_count || 5;
     document.getElementById('prompt-open').value = strategy.prompt_open || '';
     document.getElementById('prompt-close').value = strategy.prompt_close || '';
     
@@ -159,6 +175,7 @@ async function saveStrategy(event) {
     const strategyId = document.getElementById('strategy-id').value;
     const name = document.getElementById('strategy-name').value;
     const baseTimeframe = parseInt(document.getElementById('base-timeframe').value);
+    const candlesCount = parseInt(document.getElementById('candles-count').value) || 5;
     const promptOpen = document.getElementById('prompt-open').value;
     const promptClose = document.getElementById('prompt-close').value;
     
@@ -171,16 +188,23 @@ async function saveStrategy(event) {
     document.querySelectorAll('.indicator-row').forEach(row => {
         const type = row.querySelector('.indicator-type').value;
         const timeframe = parseInt(row.querySelector('.indicator-timeframe').value);
-        const period = parseInt(row.querySelector('.indicator-period').value) || 14;
         
-        const params = { period };
+        let params = {};
+        
         if (type === 'STOCHASTIC') {
             params.k_period = parseInt(row.querySelector('.indicator-k-period')?.value) || 14;
             params.d_period = parseInt(row.querySelector('.indicator-d-period')?.value) || 3;
             params.slowing = parseInt(row.querySelector('.indicator-slowing')?.value) || 3;
         } else if (type === 'BOLLINGER') {
+            params.period = parseInt(row.querySelector('.indicator-period')?.value) || 20;
             params.std_dev = parseFloat(row.querySelector('.indicator-std-dev')?.value) || 2.0;
+        } else if (type === 'IS_PINBAR') {
+            params.min_body_ratio = parseFloat(row.querySelector('.indicator-min-body')?.value) || 0.3;
+            params.min_shadow_ratio = parseFloat(row.querySelector('.indicator-min-shadow')?.value) || 2.0;
+        } else if (['SMA', 'EMA', 'RSI', 'ATR', 'ADX'].includes(type)) {
+            params.period = parseInt(row.querySelector('.indicator-period')?.value) || 14;
         }
+        // Для LAST_CANDLE_SIZE_PIPS и ENGULFING params остаётся пустым
         
         indicators.push({ type, timeframe, params });
     });
@@ -198,7 +222,8 @@ async function saveStrategy(event) {
                     indicators,
                     prompt_open: promptOpen,
                     prompt_close: promptClose,
-                    base_timeframe: baseTimeframe
+                    base_timeframe: baseTimeframe,
+                    candles_count: candlesCount
                 })
             });
         } else {
@@ -212,7 +237,8 @@ async function saveStrategy(event) {
                     indicators,
                     prompt_open: promptOpen,
                     prompt_close: promptClose,
-                    base_timeframe: baseTimeframe
+                    base_timeframe: baseTimeframe,
+                    candles_count: candlesCount
                 })
             });
         }
@@ -268,32 +294,20 @@ function addIndicatorRow(type = 'SMA', timeframe = 60, params = {}) {
     const container = document.getElementById('indicators-container');
     const rowId = Date.now();
     
-    const indicatorTypes = ['SMA', 'EMA', 'STOCHASTIC', 'RSI', 'BOLLINGER', 'ATR'];
+    // Добавлены новые индикаторы: ADX, LAST_CANDLE_SIZE_PIPS, IS_PINBAR, ENGULFING
+    const indicatorTypes = [
+        'SMA', 'EMA', 'STOCHASTIC', 'RSI', 'BOLLINGER', 'ATR', 
+        'ADX', 'LAST_CANDLE_SIZE_PIPS', 'IS_PINBAR', 'ENGULFING'
+    ];
     const timeframeOptions = config.timeframes.map(tf => 
-        `<option value="${tf}" ${tf === timeframe ? 'selected' : ''}>H${tf/60}</option>`
+        `<option value="${tf}" ${tf === timeframe ? 'selected' : ''}>${formatTimeframe(tf)}</option>`
     ).join('');
     
     const row = document.createElement('div');
     row.className = 'indicator-row';
     row.dataset.id = rowId;
     
-    let paramInputs = '';
-    
-    if (type === 'STOCHASTIC') {
-        paramInputs = `
-            <input type="number" class="indicator-k-period" placeholder="K" value="${params.k_period || 14}" style="width:60px">
-            <input type="number" class="indicator-d-period" placeholder="D" value="${params.d_period || 3}" style="width:60px">
-            <input type="number" class="indicator-slowing" placeholder="Sl" value="${params.slowing || 3}" style="width:60px">
-        `;
-    } else if (type === 'BOLLINGER') {
-        paramInputs = `
-            <input type="number" class="indicator-std-dev" placeholder="StdDev" value="${params.std_dev || 2.0}" step="0.1" style="width:80px">
-        `;
-    } else {
-        paramInputs = `
-            <input type="number" class="indicator-period" placeholder="Period" value="${params.period || 14}" style="width:80px">
-        `;
-    }
+    let paramInputs = getParamInputs(type, params);
     
     row.innerHTML = `
         <select class="indicator-type" onchange="updateIndicatorParams(${rowId})">
@@ -309,42 +323,53 @@ function addIndicatorRow(type = 'SMA', timeframe = 60, params = {}) {
     container.appendChild(row);
 }
 
+/**
+ * Возвращает HTML для параметров индикатора в зависимости от типа
+ */
+function getParamInputs(type, params = {}) {
+    if (type === 'STOCHASTIC') {
+        return `
+            <input type="number" class="indicator-k-period" placeholder="K" value="${params.k_period || 14}" style="width:60px">
+            <input type="number" class="indicator-d-period" placeholder="D" value="${params.d_period || 3}" style="width:60px">
+            <input type="number" class="indicator-slowing" placeholder="Sl" value="${params.slowing || 3}" style="width:60px">
+        `;
+    } else if (type === 'BOLLINGER') {
+        return `
+            <input type="number" class="indicator-period" placeholder="Per" value="${params.period || 20}" style="width:60px">
+            <input type="number" class="indicator-std-dev" placeholder="StdDev" value="${params.std_dev || 2.0}" step="0.1" style="width:70px">
+        `;
+    } else if (type === 'IS_PINBAR') {
+        return `
+            <input type="number" class="indicator-min-body" placeholder="MinBody%" value="${params.min_body_ratio || 0.3}" step="0.1" style="width:70px">
+            <input type="number" class="indicator-min-shadow" placeholder="MinShadow%" value="${params.min_shadow_ratio || 2.0}" step="0.1" style="width:70px">
+        `;
+    } else if (['SMA', 'EMA', 'RSI', 'ATR', 'ADX'].includes(type)) {
+        return `
+            <input type="number" class="indicator-period" placeholder="Period" value="${params.period || 14}" style="width:80px">
+        `;
+    } else {
+        // Для LAST_CANDLE_SIZE_PIPS и ENGULFING параметры не нужны
+        return '';
+    }
+}
+
 function updateIndicatorParams(rowId) {
     const row = document.querySelector(`.indicator-row[data-id="${rowId}"]`);
     if (!row) return;
     
     const type = row.querySelector('.indicator-type').value;
-    const periodInput = row.querySelector('.indicator-period');
-    const kInput = row.querySelector('.indicator-k-period');
-    const dInput = row.querySelector('.indicator-d-period');
-    const slowingInput = row.querySelector('.indicator-slowing');
-    const stdDevInput = row.querySelector('.indicator-std-dev');
     
     // Удаляем все существующие input'ы параметров
-    row.querySelectorAll('.indicator-period, .indicator-k-period, .indicator-d-period, .indicator-slowing, .indicator-std-dev')
+    row.querySelectorAll('.indicator-period, .indicator-k-period, .indicator-d-period, .indicator-slowing, .indicator-std-dev, .indicator-min-body, .indicator-min-shadow')
         .forEach(el => el.remove());
     
-    let newInputs = '';
-    
-    if (type === 'STOCHASTIC') {
-        newInputs = `
-            <input type="number" class="indicator-k-period" placeholder="K" value="14" style="width:60px">
-            <input type="number" class="indicator-d-period" placeholder="D" value="3" style="width:60px">
-            <input type="number" class="indicator-slowing" placeholder="Sl" value="3" style="width:60px">
-        `;
-    } else if (type === 'BOLLINGER') {
-        newInputs = `
-            <input type="number" class="indicator-std-dev" placeholder="StdDev" value="2.0" step="0.1" style="width:80px">
-        `;
-    } else {
-        newInputs = `
-            <input type="number" class="indicator-period" placeholder="Period" value="14" style="width:80px">
-        `;
-    }
+    let newInputs = getParamInputs(type, {});
     
     // Вставляем новые input'ы перед кнопкой удаления
     const removeBtn = row.querySelector('.btn-remove');
-    removeBtn.insertAdjacentHTML('beforebegin', newInputs);
+    if (newInputs.trim()) {
+        removeBtn.insertAdjacentHTML('beforebegin', newInputs);
+    }
 }
 
 function removeIndicatorRow(rowId) {
