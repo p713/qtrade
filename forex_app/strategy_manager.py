@@ -52,7 +52,7 @@ def get_strategy_by_id(strategy_id: str) -> Optional[dict]:
 
 def create_strategy(name: str, timeframes: List[int], indicators: List[dict],
                     prompt_open: str, prompt_close: str, 
-                    base_timeframe: int = 60) -> dict:
+                    base_timeframe: int = 60, candles_count: int = 5) -> dict:
     """
     Создаёт новую стратегию.
     
@@ -63,6 +63,7 @@ def create_strategy(name: str, timeframes: List[int], indicators: List[dict],
         prompt_open: Промпт для открытия сделки
         prompt_close: Промпт для закрытия сделки
         base_timeframe: Основной таймфрейм для тестирования (в минутах)
+        candles_count: Количество последних свечей для анализа
     
     Returns:
         Созданная стратегия
@@ -75,6 +76,7 @@ def create_strategy(name: str, timeframes: List[int], indicators: List[dict],
         "prompt_open": prompt_open,
         "prompt_close": prompt_close,
         "base_timeframe": base_timeframe,
+        "candles_count": candles_count,
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat()
     }
@@ -104,7 +106,7 @@ def update_strategy(strategy_id: str, **kwargs) -> Optional[dict]:
             # Обновляем указанные поля
             for key, value in kwargs.items():
                 if key in ["name", "timeframes", "indicators", "prompt_open", 
-                          "prompt_close", "base_timeframe"]:
+                          "prompt_close", "base_timeframe", "candles_count"]:
                     strategy[key] = value
             
             strategy["updated_at"] = datetime.now().isoformat()
