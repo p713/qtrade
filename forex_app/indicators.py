@@ -319,3 +319,188 @@ def calculate_indicator(df: pd.DataFrame, indicator_type: str, params: dict) -> 
     
     else:
         raise ValueError(f"Неизвестный тип индикатора: {indicator_type}")
+
+
+def adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """
+    Average Directional Index (ADX).
+    Measures trend strength regardless of direction.
+    
+    Args:
+        df: DataFrame с колонками 'high', 'low', 'close'
+        period: Период расчёта (по умолчанию 14)
+    
+    Returns:
+        Series со значениями ADX
+    """
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    
+    # Calculate +DM and -DM
+    plus_dm = high.diff()
+    minus_dm = -low.diff()
+    
+    plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
+    minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
+    
+    # Calculate True Range
+    tr1 = high - low
+    tr2 = abs(high - close.shift(1))
+    tr3 = abs(low - close.shift(1))
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Smooth with EMA
+    plus_di = 100 * (plus_dm.ewm(span=period, adjust=False).mean() / 
+                     tr.ewm(span=period, adjust=False).mean())
+    minus_di = 100 * (minus_dm.ewm(span=period, adjust=False).mean() / 
+                      tr.ewm(span=period, adjust=False).mean())
+    
+    # Calculate DX and ADX
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan)
+    adx_value = dx.ewm(span=period, adjust=False).mean()
+    
+    return adx_value
+
+
+def last_candle_type(df: pd.DataFrame) -> pd.Series:
+    """
+    Determine candle type for each candle.
+    Returns: 'BULLISH', 'BEARISH', or 'NONE'
+    
+    Args:
+        df: DataFrame с колонками 'open', 'close'
+    
+    Returns:
+        Series со значениями типа свечи
+    """
+    def classify_candle(row):
+        if row['close'] > row['open']:
+            return 'BULLISH'
+        elif row['close'] < row['open']:
+            return 'BEARISH'
+        else:
+            return 'NONE'
+    
+    return df.apply(classify_candle, axis=1)
+
+
+def last_candle_size_pips(df: pd.DataFrame, digits: int = 5) -> pd.Series:
+    """
+    Calculate candle size in pips.
+    
+    Args:
+        df: DataFrame с колонками 'high', 'low'
+        digits: Количество знаков после запятой (5 для обычных пар, 3 для JPY)
+    
+    Returns:
+        Series с размером свечи в пипсах
+    """
+    # Determine pip size based on price level (JPY pairs are around 100-150)
+    if df['close'].iloc[0] < 100:  # JPY pairs
+        pip_size = 0.01 if digits == 4 else 0.001
+    else:
+        pip_size = 0.01 if digits == 4 else 0.0001
+    
+    candle_range = df['high'] - df['low']
+    return (candle_range / pip_size).round(1)
+
+
+def is_pinbar(df: pd.DataFrame, min_body_ratio: float = 0.3, min_wick_ratio: float = 2.0) -> pd.Series:
+    """
+    Detect Pin Bar pattern.
+    A pin bar has a small body and a long wick (at least 2x the body).
+    
+    Args:
+        df: DataFrame с колонками 'open', 'high', 'low', 'close'
+        min_body_ratio: maximum ratio of body to total range (default 0.3 = 30%)
+        min_wick_ratio: minimum ratio of wick to body (default 2.0 = 2x)
+    
+    Returns:
+        Series с булевыми значениями (True если свеча - пинбар)
+    """
+    def check_pinbar(row):
+        body = abs(row['close'] - row['open'])
+        total_range = row['high'] - row['low']
+        
+        if total_range == 0:
+            return False
+        
+        body_ratio = body / total_range
+        
+        if body_ratio > min_body_ratio:
+            return False
+        
+        upper_wick = row['high'] - max(row['open'], row['close'])
+        lower_wick = min(row['open'], row['close']) - row['low']
+        max_wick = max(upper_wick, lower_wick)
+        
+        if body == 0:
+            return True  # Doji with long wicks
+        
+        wick_ratio = max_wick / body
+        return wick_ratio >= min_wick_ratio
+    
+    return df.apply(check_pinbar, axis=1)
+
+
+def is_engulfing(df: pd.DataFrame) -> pd.Series:
+    """
+    Detect Engulfing pattern for two consecutive candles.
+    Returns True if current candle engulfs the previous one.
+    
+    Bullish engulfing: previous bearish, current bullish, current body engulfs previous body
+    Bearish engulfing: previous bullish, current bearish, current body engulfs previous body
+    
+    Args:
+        df: DataFrame с колонками 'open', 'high', 'low', 'close'
+    
+    Returns:
+        Series с булевыми значениями (True если свеча - паттерн поглощения)
+    """
+    def check_engulfing(idx):
+        if idx == 0:
+            return False
+        
+        prev = df.iloc[idx - 1]
+        curr = df.iloc[idx]
+        
+        prev_body = prev['close'] - prev['open']
+        curr_body = curr['close'] - curr['open']
+        
+        # Bullish engulfing
+        if prev_body < 0 and curr_body > 0:
+            if curr['open'] <= prev['close'] and curr['close'] >= prev['open']:
+                return True
+        
+        # Bearish engulfing
+        if prev_body > 0 and curr_body < 0:
+            if curr['open'] >= prev['close'] and curr['close'] <= prev['open']:
+                return True
+        
+        return False
+    
+    return pd.Series([check_engulfing(i) for i in range(len(df))], index=df.index)
+
+
+def calculate_spread_pips(bid: float, ask: float, digits: int = 5) -> float:
+    """
+    Calculate spread in pips.
+    
+    Args:
+        bid: Цена bid
+        ask: Цена ask
+        digits: Количество знаков после запятой (5 для обычных пар, 3 для JPY)
+    
+    Returns:
+        Спред в пипсах
+    """
+    spread = ask - bid
+    
+    # Determine pip size
+    if bid < 100:  # JPY pairs
+        pip_size = 0.01 if digits == 4 else 0.001
+    else:
+        pip_size = 0.01 if digits == 4 else 0.0001
+    
+    return round(spread / pip_size, 1)

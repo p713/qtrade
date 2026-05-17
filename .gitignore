@@ -1,44 +1,7 @@
 ```
-# Environment
+__pycache__/
+*.pyc
 .env
 .env.local
 *.env.*
-
-# Dependencies
-.venv/
-venv/
-__pycache__/
-node_modules/
-
-# Compiled Python files
-*.pyc
-*.pyo
-*.pyd
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Logs
-*.log
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
 ```
