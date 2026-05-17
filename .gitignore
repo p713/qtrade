@@ -1,4 +1,10 @@
 ```
+__pycache__/
+*.pyc
+.env
+.env.local
+*.env.*
+```
 # Dependencies
 __pycache__/
 *.pyc

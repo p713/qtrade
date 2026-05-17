@@ -184,7 +184,8 @@ def edit_prompt(prompt_text: str, user_request: str) -> str:
     return result
 
 
-def get_trading_decision(indicator_values: dict, prompt: str, symbol: str, current_price: float) -> dict:
+def get_trading_decision(indicator_values: dict, prompt: str, symbol: str, 
+                         current_price: float, bid: float = None, ask: float = None) -> dict:
     """
     Запрашивает у быстрой LLM торговое решение.
     
@@ -192,7 +193,9 @@ def get_trading_decision(indicator_values: dict, prompt: str, symbol: str, curre
         indicator_values: Словарь со значениями индикаторов
         prompt: Промпт пользователя для принятия решения
         symbol: Валютная пара
-        current_price: Текущая цена
+        current_price: Текущая цена (close)
+        bid: Цена bid (если не указана, используется current_price)
+        ask: Цена ask (если не указана, используется current_price + спред)
     
     Returns:
         Распарсенный JSON с решением
@@ -203,28 +206,47 @@ def get_trading_decision(indicator_values: dict, prompt: str, symbol: str, curre
 Требования к формату ответа:
 Ответ должен быть ТОЛЬКО в формате JSON без дополнительного текста. Структура JSON:
 {
-    "action": "buy"/"sell"/"buy_limit"/"sell_limit"/"buy_stop"/"sell_stop"/"hold",
-    "price": число (цена входа, если ордер отложенный),
-    "sl": число (stop loss, может быть null),
-    "tp": число (take profit, может быть null),
-    "reasoning": "текстовое обоснование решения"
+  "action": "BUY"/"SELL"/"HOLD",
+  "order_type": "market buy"/"market sell"/"buy limit"/"sell limit"/"buy stop"/"sell stop",
+  "entry_price": число (цена входа),
+  "stop_loss": число (stop loss, может быть null),
+  "take_profit": число (take profit, может быть null),
+  "explanation": "текстовое обоснование решения"
 }
+
+Типы ордеров:
+- market buy / market sell - рыночные ордера
+- buy limit / sell limit - отложенные ордера лимит
+- buy stop / sell stop - отложенные ордера стоп
 """
     
-    indicators_text = "\n".join([f"{k}: {v}" for k, v in indicator_values.items()])
+    # Добавляем bid и ask в значения индикаторов
+    if bid is None:
+        bid = current_price
+    if ask is None:
+        # Предполагаем спред 2 пипса по умолчанию
+        if current_price < 100:  # JPY pairs
+            ask = current_price + 0.002
+        else:
+            ask = current_price + 0.0002
+    
+    indicator_values_with_prices = {
+        "bid": round(bid, 5),
+        "ask": round(ask, 5),
+        **indicator_values
+    }
+    
+    indicators_text = ", ".join([f"{k}={v}" for k, v in indicator_values_with_prices.items()])
     
     user_message = f"""Символ: {symbol}
-Текущая цена: {current_price}
-
-Значения индикаторов:
-{indicators_text}
+Значения индикаторов и цен: {indicators_text}
 
 {prompt}
 
 {format_instruction}"""
 
     messages = [
-        {"role": "system", "content": "Вы торговый советник. Анализируете рынок и принимаете торговые решения на основе технических индикаторов."},
+        {"role": "system", "content": "Вы торговый советник. Анализируете рынок и принимаете торговые решения на основе технических индикаторов. Возвращаете решение строго в формате JSON."},
         {"role": "user", "content": user_message}
     ]
     
@@ -235,14 +257,48 @@ def get_trading_decision(indicator_values: dict, prompt: str, symbol: str, curre
     
     try:
         decision = json_module.loads(response_text)
-    except json_module.JSONDecodeError:
+        
+        # Нормализуем формат ответа к внутреннему представлению
+        action_map = {
+            "BUY": "buy",
+            "SELL": "sell", 
+            "HOLD": "hold",
+            "buy": "buy",
+            "sell": "sell",
+            "hold": "hold"
+        }
+        
+        order_type = decision.get("order_type", "").lower()
+        action = action_map.get(decision.get("action", "hold"), "hold")
+        
+        # Если action не указан, пытаемся определить из order_type
+        if action == "hold" and order_type:
+            if "buy" in order_type:
+                action = "buy" if "market" in order_type else "buy_limit" if "limit" in order_type else "buy_stop"
+            elif "sell" in order_type:
+                action = "sell" if "market" in order_type else "sell_limit" if "limit" in order_type else "sell_stop"
+        
+        # Для отложенных ордеров используем entry_price
+        price = decision.get("entry_price")
+        if not price and action in ["buy_limit", "sell_limit", "buy_stop", "sell_stop"]:
+            price = decision.get("price")
+        
+        return {
+            "action": action,
+            "price": price,
+            "sl": decision.get("stop_loss"),
+            "tp": decision.get("take_profit"),
+            "reasoning": decision.get("explanation", ""),
+            "order_type": order_type
+        }
+        
+    except json_module.JSONDecodeError as e:
         # Если не удалось распарсить JSON, возвращаем дефолтное решение
-        decision = {
+        return {
             "action": "hold",
             "price": None,
             "sl": None,
             "tp": None,
-            "reasoning": f"Не удалось распарсить ответ LLM: {response_text}"
+            "reasoning": f"Не удалось распарсить ответ LLM: {response_text}. Ошибка: {str(e)}",
+            "order_type": ""
         }
-    
-    return decision

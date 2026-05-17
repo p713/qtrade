@@ -7,7 +7,10 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 import pandas as pd
 
-from indicators import calculate_indicator, is_ma_rising, is_ma_falling, ma_cross, price_distance_to_ma
+from indicators import (
+    calculate_indicator, is_ma_rising, is_ma_falling, ma_cross, price_distance_to_ma,
+    last_candle_type, last_candle_size_pips, is_pinbar, is_engulfing, calculate_spread_pips
+)
 from llm import get_trading_decision
 from data_manager import fetch_all_required_data, load_dataframe
 from socket_server import get_mt5_server
@@ -118,10 +121,43 @@ class BacktestEngine:
         # Основной цикл тестирования
         self.log("Starting main loop...")
         
+        # Определяем количество знаков после запятой для пары (JPY = 3, остальные = 5)
+        digits = 3 if symbol.upper().endswith('JPY') else 5
+        
         for i in range(len(base_df)):
             current_bar = base_df.iloc[i]
             current_time = current_bar.name
             current_price = current_bar['close']
+            
+            # Рассчитываем дополнительные индикаторы для текущей свечи
+            candle_types = last_candle_type(base_df.iloc[:i+1])
+            candle_sizes = last_candle_size_pips(base_df.iloc[:i+1], digits=digits)
+            pinbars = is_pinbar(base_df.iloc[:i+1])
+            engulfings = is_engulfing(base_df.iloc[:i+1])
+            
+            current_candle_type = candle_types.iloc[-1] if len(candle_types) > 0 else 'NONE'
+            current_candle_size = candle_sizes.iloc[-1] if len(candle_sizes) > 0 else 0
+            current_is_pinbar = pinbars.iloc[-1] if len(pinbars) > 0 else False
+            current_is_engulfing = engulfings.iloc[-1] if len(engulfings) > 0 else False
+            
+            # Расчет bid/ask (спред по умолчанию 2 пипса)
+            spread_pips = 2
+            if digits == 3:  # JPY pairs
+                spread = spread_pips * 0.001
+            else:
+                spread = spread_pips * 0.00001
+            
+            bid = current_price - spread / 2
+            ask = current_price + spread / 2
+            
+            # Добавляем дополнительные данные в indicator_values
+            extra_indicators = {
+                'last_candle_type': current_candle_type,
+                'last_candle_size_pips': current_candle_size,
+                'is_pinbar': current_is_pinbar,
+                'is_engulfing': current_is_engulfing,
+                'spread_pips': spread_pips
+            }
             
             # Если есть открытая позиция, проверяем условия закрытия
             if position is not None:
@@ -179,14 +215,29 @@ class BacktestEngine:
                 indicator_values = {}
                 for col in base_df.columns:
                     if col not in ['open', 'high', 'low', 'close', 'volume']:
-                        indicator_values[col] = current_bar[col]
+                        val = current_bar[col]
+                        # Округляем числовые значения
+                        if isinstance(val, (int, float)) and not isinstance(val, bool):
+                            if abs(val) > 100:
+                                indicator_values[col] = round(val, 2)
+                            elif abs(val) > 1:
+                                indicator_values[col] = round(val, 4)
+                            else:
+                                indicator_values[col] = round(val, 6)
+                        else:
+                            indicator_values[col] = val
                 
-                # Запрос к LLM
+                # Добавляем дополнительные индикаторы
+                indicator_values.update(extra_indicators)
+                
+                # Запрос к LLM с передачей bid и ask
                 decision = get_trading_decision(
                     indicator_values=indicator_values,
                     prompt=prompt_open,
                     symbol=symbol,
-                    current_price=current_price
+                    current_price=current_price,
+                    bid=bid,
+                    ask=ask
                 )
                 
                 action = decision.get("action", "hold")
