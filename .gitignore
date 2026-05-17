@@ -13,6 +13,22 @@ __pycache__/
 .env
 .env.local
 *.env.*
+```
+# Dependencies
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
 
 # Editors
 .vscode/
